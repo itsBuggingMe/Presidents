@@ -4,8 +4,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection.Emit;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
+using Newtonsoft;
+using Newtonsoft.Json;
 
 namespace common
 {
@@ -21,8 +22,9 @@ namespace common
         }
         public static string encodeStart<T>(T info)
         {
-            return "$S:" + JsonSerializer.Serialize(info);
+            return "$S:" + JsonConvert.SerializeObject(info);
         }
+
         public static bool tryDecodeID(string encodedID, out int id)
         {
             if (encodedID.StartsWith("$I:"))
@@ -50,28 +52,29 @@ namespace common
             if (encodedStart.StartsWith("$S:"))
             {
                 string json = encodedStart.Substring(3);
-                info = JsonSerializer.Deserialize<T>(json);
+                info = JsonConvert.DeserializeObject<T>(json);
                 return true;
             }
 
             info = default(T);
             return false;
         }
-        public static string encodeObject<T>(T obj, int playerID)
+
+        public static string encodeObject<T>(T obj, int playerID, string label)
         {
-            return playerID.ToString() + JsonSerializer.Serialize(obj);
+            return playerID.ToString() + "^" + label + "^" + JsonConvert.SerializeObject(obj);
         }
 
-        public static bool tryDecodeObject<T>(string encodedObject, out int playerID, out T obj)
+        public static bool tryDecodeObject<T>(string encodedObject, out int playerID, out T obj, string label)
         {
-            if (!string.IsNullOrEmpty(encodedObject))
+            string[] packet = encodedObject.Split('^');
+
+            if (!string.IsNullOrEmpty(encodedObject) && int.TryParse(packet[0], out playerID) && packet[1] == label)
             {
-                if (int.TryParse(encodedObject[0].ToString(), out playerID))
-                {
-                    string json = encodedObject.Substring(1);
-                    obj = JsonSerializer.Deserialize<T>(json);
-                    return true;
-                }
+                string json = packet[2];
+                obj = JsonConvert.DeserializeObject<T>(json);
+
+                return true;
             }
 
             playerID = 0;

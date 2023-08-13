@@ -8,44 +8,77 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace client
 {
     internal class client
     {
+        banner banner;
+        byte whichButtonPressed;
+        display display;
         private void tickGame()
         {
+            MouseState mouseState = Mouse.GetState();
             //TODO: write game tick
+            move? move = thisPlayer.update(out string bannerMSG);
+            if(move.HasValue)
+            {
+                sendMessage(packetEncodeDecode.encodeObject(move, id, "move"));
+            }
+            if(!string.IsNullOrEmpty(bannerMSG))
+            {
+                banner.addMsg(20,bannerMSG);
+                whichButtonPressed = 0;
+                if (bannerMSG == "pass" && mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    whichButtonPressed = 1;
+                }
+                if (bannerMSG == "go" && mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    whichButtonPressed = 2;
+                }
+            }
+            banner.tick();
+            display.tick();
+            for (int i = packetBuffer.Count - 1; i >= 0; i--)
+            {
+                if (packetEncodeDecode.tryDecodeObject(packetBuffer[i], out int playerID, out gameState obj, "state") && playerID == 0)
+                {
+                    thisPlayer.table = obj.table.ToList();
+                    thisPlayer.garbage = obj.garbage.ToList();
+                    thisPlayer.currentPlayerID = obj.currentPlayer;
+                    packetBuffer.RemoveAt(i);
+                }
+            }
         }
-
+            
         private void initialise(initalisationPacket initalPacket)
         {
             //TODO: write initalisation code
-
+            thisPlayer = new player(id, name, textures, sounds, screenSize, initalPacket.cards.ToList());
+            display = new display(thisPlayer, textures);
         }
 
         public void draw(SpriteBatch spriteBatch, GraphicsDevice graphicsDevice)
         {
-            //TODO: write draw code
+            //TODO: add draw code
+            spriteBatch.Draw(textures.get("table"), Vector2.Zero, lobby ? Color.Gray : Color.White);
 
-            if (!connected)
-            {
-                graphicsDevice.Clear(Color.DarkRed);
-            }
-            if (lobby)
-            {
-                graphicsDevice.Clear(Color.CornflowerBlue);
-            }
             if (initalised)
             {
-                graphicsDevice.Clear(Color.Green);
+                //thisPlayer.draw(spriteBatch);
+                display.draw(spriteBatch);
+                spriteBatch.Draw(textures.get("pass"), new Rectangle(274,42, 24,24), new Rectangle(24, whichButtonPressed == 2 ? 24 : 0, 24, 24),Color.White);
+                spriteBatch.Draw(textures.get("pass"), new Rectangle(274,42+28, 24,24), new Rectangle(0, whichButtonPressed == 1 ? 24 : 0, 24, 24),Color.White);
             }
+            else
+            {
+                spriteBatch.DrawString(font, $"Players: {playerCount}", new Vector2(64, 64), Color.White);
+            }
+            banner.draw(spriteBatch, screenSize);
         }
 
-
+        player thisPlayer;
 
         NetClient _client;
 
@@ -55,7 +88,7 @@ namespace client
         int playerCount;
 
         //TODO: update player threshold
-        const int playerThreshold = 2;
+        const int playerThreshold = 3;
 
         string ip;
         int port;
@@ -71,15 +104,26 @@ namespace client
         int ticks = 0;
 
         DateTime lastServerPing;
-        public client(string ip, int port, string appname)
+
+        Textures textures;
+        SoundFX sounds;
+        SpriteFont font;
+
+        Point screenSize;
+
+        public client(string ip, int port, string appname, Point screenSize, Textures textures, SoundFX sounds, SpriteFont font)
         {
             this.ip = ip; this.port = port;
             this.appName = appname;
-
+            this.textures = textures;
+            this.sounds = sounds;
+            this.font = font;
+            this.screenSize = screenSize;
+            banner = new banner(font, textures.get("banner"));
             restartConnection();
         }
 
-        public void tick()
+        public void tick(bool focus)
         {
             ticks++;
             readMessages();
@@ -112,16 +156,18 @@ namespace client
                         initalised = false;
                         return;
                     }
-                    if(!initalised)
+                    if(initalised)
                     {
+                        if(focus)
                         tickGame();
                     }
                     else
                     {
                         for (int i = packetBuffer.Count - 1; i >= 0; i--)
                         {
-                            if (packetEncodeDecode.tryDecodeStart(packetBuffer[i], out Random a))
+                            if (packetEncodeDecode.tryDecodeStart(packetBuffer[i], out initalisationPacket initalPacket))
                             {
+                                initialise(initalPacket);
                                 initalised = true;
                                 packetBuffer.RemoveAt(i);
                                 break;
@@ -194,6 +240,7 @@ namespace client
 
         public void readMessages()
         {
+            packetBuffer.Clear();
             NetIncomingMessage incMsg;
             while ((incMsg = _client.ReadMessage()) != null)
             {

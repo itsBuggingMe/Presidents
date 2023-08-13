@@ -15,13 +15,15 @@ namespace server
 {
     internal class server
     {
+        presidentsGame game;
+
         private void tick()
         {
             if (lobby)
             {
                 for (int i = packets.Count - 1; i >= 0; i--)
                 {
-                    if (packets[i][0] == '$' && packets[i][1] == 'S')
+                    if (packets[i][0] == '$' && packets[i][1] == 'S' && playerThreshold <= connectedPlayers.Count)
                     {
                         _console.write(0, "Game Started");
                         lobby = false;
@@ -33,15 +35,39 @@ namespace server
             else
             {
                 //TODO: write game tick
+                string finalPacket = "";
+                if(packets.Count > 0)
+                {
+                    finalPacket = packets[packets.Count - 1];
+                }
+                string output = game.update(packets, finalPacket);
+                sendMessageAll(output);
             }
         }
 
         private void initalise()
         {
             //TODO: write initalisation
+            int[] id = new int[connectedPlayers.Count];
+            string[] name = new string[connectedPlayers.Count];
 
-            initalisationPacket packet;
-            sendMessageAll(packetEncodeDecode.encodeStart(packet));
+            for(int i = 0; i < connectedPlayers.Count; i++)
+            {
+                id[i] = connectedPlayers[i].playerIds;
+                name[i] = connectedPlayers[i].name;
+            }
+
+            game = new presidentsGame(id, name);
+
+            for (int i = 0; i < connectedPlayers.Count; i++)
+            {
+                card[] playerCards = game.players[i].cards.ToArray();
+                initalisationPacket initInfo = new initalisationPacket(playerCards, id, name);
+
+                string packet = packetEncodeDecode.encodeStart(initInfo);
+
+                sendMessage(packet, connectedPlayers[i].connection);
+            }
         }
 
 
@@ -56,7 +82,7 @@ namespace server
         int ticks = 0;
         int port;
 
-        int playerThreshold = 2;
+        int playerThreshold = 3;
 
         bool lobby = true;
 
@@ -75,8 +101,35 @@ namespace server
             _console.add(30, ConsoleColor.Green);//outgoing
         }
 
+        private void testMove(List<card> cards)
+        {
+            move testMove = new move(1 , cards);
+
+
+            foreach(card card in testMove.cards)
+            {
+                foreach(player pl in game.players)
+                {
+                    pl.cards.Add(card);
+                }
+            }
+
+        }
+
         public void start()
         {
+            /*
+            game = new presidentsGame(new int[] {1,1,1 }, new string[] { "","",""});
+            List<card> cards;
+
+            cards = new List<card>() { new card(0,2), new card(0,3), new card(0,4) };
+            testMove(cards);
+            cards = new List<card>() { new card(0,3), new card(0,4), new card(0,5) };
+            testMove(cards);
+            cards = new List<card>() { new card(0,6), new card(0,8), new card(0,9) };
+            testMove(cards);
+            */
+
             _server.Start();
             _console.write(0, $"Server Started on Port {port}");
             DateTime lastTickTime = DateTime.Now;
