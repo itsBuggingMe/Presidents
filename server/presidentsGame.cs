@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using System.Diagnostics;
 using System.Net.Sockets;
 
 namespace server
@@ -59,24 +60,34 @@ namespace server
 
             return activePlayers <= 1;
         }
-
+        Random random = new Random();
         public string update(List<string> packets, string finalPacket)
         {
-
-            for(int i = packets.Count - 1; i >= 0;i--)
+            for (int i = packets.Count - 1; i >= 0;i--)
             {
                 if (packetEncodeDecode.tryDecodeObject(packets[i], out int id, out move move, "move"))
                 {
                     packets.RemoveAt(i);
+
                     if (Move(move, out bool bombUsed))
                     {
-                        idOfLastGone = players[playerTurn].id;
+                        if(move.cards.Count == 0)
+                        {
+                            if(players[playerTurn].id == idOfLastGone)
+                            {
+                                break;
+                            }
+
+                            idOfLastGone = players[playerTurn].id;
+                        }
+
                         if (players[playerTurn].cards.Count == 0)
                         {
                             placements.Add(players[playerTurn].id * (bombUsed ? -1 : 1));
                         }
                         nextTurn();
                         hasGameEnded();
+
                         break;
                     }
                 }
@@ -156,7 +167,7 @@ namespace server
 
             if (move.cards.Count < 4 && move.cards.Count > 0)
             {
-                attemptFinish(move);
+                //attemptFinish(move);
             }
 
             if (move.ID != activePlayer.id)
@@ -177,12 +188,14 @@ namespace server
                 }
             }//does he have the cards?
 
+
             move.cards.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
             //END MOVE VALIDATION
 
             //does he have a bomb?
             if (move.cards[move.cards.Count - 1].cardValue == 0)
             {
+                List<card> bomb = new List<card>() { move.cards[move.cards.Count - 1] };
                 move.cards.RemoveAt(move.cards.Count - 1);//HE HAS A BOMB WOOO
                 if (move.cards.Count == 0)
                 {
@@ -193,6 +206,8 @@ namespace server
                     else//he bombed self out
                     {
                         bombUsed = true;
+                        moveTableToGarbage();
+                        table.Add(bomb[0]);
                         return true;
                     }
                 }//why only bomb?
@@ -200,19 +215,20 @@ namespace server
                 {
                     return false;//why two bombs??
                 }
-                table.Clear();
-                return tryGenMove(move);
-            }
-            //does he have 4x bomb
+                moveTableToGarbage();
 
-            if (hasFourBomb(move, out move noBombMove))
+                return tryGenMove(move, bomb);
+            }
+
+            //does he have 4x bomb
+            if (hasFourBomb(move, out move noBombMove, out List<card> fourBomb))
             {
-                table.Clear();
                 move = noBombMove;
+                return tryGenMove(move, fourBomb);
             }
 
             //does the set match the table?
-            return tryGenMove(move);
+            return tryGenMove(move, new List<card>());
         }
 
         private static void shuffle<T>(List<T> list)
@@ -231,7 +247,7 @@ namespace server
         }
 
 
-        private bool tryGenMove(move move)
+        private bool tryGenMove(move move, List<card> bomb)
         {
             if (move.cards.Count > 3)
             {
@@ -240,7 +256,13 @@ namespace server
 
             if (move.cards.Count != table.Count && table.Count != 0)
             {
+
                 return false;
+            }
+
+            foreach (card card in table)
+            {
+                Debug.WriteLine(card.cardValue);
             }
 
             switch (move.cards.Count)
@@ -250,8 +272,17 @@ namespace server
                     {
                         moveTableToGarbage();
 
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
                         table.Add(move.cards[0]);
+
                         players[playerTurn].cards.Remove(move.cards[0]);
+
+                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
+
                         return true;
                     }//single accepted
                     else
@@ -263,10 +294,20 @@ namespace server
                     {
                         moveTableToGarbage();
 
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
                         table.Add(move.cards[0]);
                         table.Add(move.cards[1]);
+
+
                         players[playerTurn].cards.Remove(move.cards[0]);
                         players[playerTurn].cards.Remove(move.cards[1]);
+
+                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
+
                         return true;
                     }
                     else
@@ -278,18 +319,30 @@ namespace server
                     {//3 of a kind
                         moveTableToGarbage();
 
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
                         table.Add(move.cards[0]);
                         table.Add(move.cards[1]);
                         table.Add(move.cards[2]);
                         players[playerTurn].cards.Remove(move.cards[0]);
                         players[playerTurn].cards.Remove(move.cards[1]);
                         players[playerTurn].cards.Remove(move.cards[2]);
+
+                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
+
                         return true;
                     }
                     else if (threeOfaKind(move.cards[0].cardValue, move.cards[1].cardValue + 1, move.cards[2].cardValue + 2) && (table.Count == 0 || (threeOfaKind(table[0].cardValue, table[1].cardValue + 1, table[2].cardValue + 2) && move.cards[0].cardValue >= table[0].cardValue)))
                     {//acendineg
                         moveTableToGarbage();
 
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
 
                         table.Add(move.cards[0]);
                         table.Add(move.cards[1]);
@@ -297,6 +350,9 @@ namespace server
                         players[playerTurn].cards.Remove(move.cards[0]);
                         players[playerTurn].cards.Remove(move.cards[1]);
                         players[playerTurn].cards.Remove(move.cards[2]);
+
+                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
+
                         return true;
                     }
                     else
@@ -315,29 +371,29 @@ namespace server
                 garbagePile.Add(table[0]);
                 table.RemoveAt(0);
             }
-            table.Clear();
         }
 
-        private bool hasFourBomb(move move, out move moveNoBomb)
+        private bool hasFourBomb(move move, out move moveNoBomb, out List<card> bomb)
         {
+            bomb = new List<card>();
+
             if (move.cards.Count < 5 || move.cards.Count == 4)
             {
                 moveNoBomb = new move();
                 return false;
             }
 
-            int matches;
             int cardType = -1;
 
             foreach (card card in move.cards)
             {
-                matches = 0;
+                bomb.Clear();
                 foreach (card otherCard in move.cards)
                 {
                     if (card.cardValue == otherCard.cardValue)
                     {
-                        matches++;
-                        if (matches == 4)
+                        bomb.Add(otherCard);
+                        if (bomb.Count == 4)
                         {
                             cardType = card.cardValue;
                             break;

@@ -2,6 +2,9 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using System;
+using System.Diagnostics;
+using System.Threading;
 
 namespace client
 {
@@ -67,6 +70,7 @@ namespace client
             _textures.addTexture("table", Content.Load<Texture2D>("table"));
             _textures.addTexture("pass", Content.Load<Texture2D>("pass"));
             _textures.addTexture("banner", Content.Load<Texture2D>("banner"));
+            _textures.addTexture("boom", Content.Load<Texture2D>("explosionSheet"));
             //Sound
 
         }
@@ -77,11 +81,12 @@ namespace client
                 Exit();
 
             // TODO: Add your update logic here
-            _client.tick(true);
-
+            
+            _client.tick(IsActive);
             base.Update(gameTime);
         }
 
+        DateTime lastDraw = DateTime.Now;
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.SetRenderTarget(tableScreen);
@@ -95,13 +100,22 @@ namespace client
             _spriteBatch.Begin(SpriteSortMode.Immediate, null, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise);
             _spriteBatch.Draw(
                 tableScreen,
-                new Rectangle(new Point(0, 0), fullScreenSize),
+                new Rectangle(new Point(0, 0), (fullScreenSize.ToVector2()).ToPoint()),
                 Color.White
             );
+            if(this.IsActive)
+            _spriteBatch.DrawString(_font, $"MSPT: {(DateTime.Now - lastDraw).TotalMilliseconds}", new Vector2(64,64), Color.White);
             _spriteBatch.End();
+            lastDraw = DateTime.Now;
 
             // TODO: Add your drawing code here
             base.Draw(gameTime);
         }
+        /*
+        EMERGENCY PREFORMACE TOOLKIT
+        DateTime lastTickA = DateTime.Now;
+        DateTime lastTickB = DateTime.Now;
+        Debug.WriteLine((lastTickB - lastTickA).TotalMilliseconds);
+        */
     }
 }

@@ -16,30 +16,43 @@ namespace client
         banner banner;
         byte whichButtonPressed;
         display display;
-        private void tickGame()
+        private void tickGame(bool focus)
         {
             MouseState mouseState = Mouse.GetState();
             //TODO: write game tick
-            move? move = thisPlayer.update(out string bannerMSG);
-            if(move.HasValue)
+            /*
+            string bannerMSG = "";
+            if (focus)
+            {
+                move? movea = thisPlayer.update(out bannerMSG);
+
+                if (!string.IsNullOrEmpty(bannerMSG))
+                {
+                    banner.addMsg(20, bannerMSG);
+                    whichButtonPressed = 0;
+                    if (bannerMSG == "pass" && mouseState.LeftButton == ButtonState.Pressed)
+                    {
+                        whichButtonPressed = 1;
+                    }
+                    if (bannerMSG == "go" && mouseState.LeftButton == ButtonState.Pressed)
+                    {
+                        whichButtonPressed = 2;
+                    }
+                }
+            }*/
+
+
+
+            banner.tick();
+
+            move? move = display.tick(focus);
+
+
+            if (move.HasValue)
             {
                 sendMessage(packetEncodeDecode.encodeObject(move, id, "move"));
             }
-            if(!string.IsNullOrEmpty(bannerMSG))
-            {
-                banner.addMsg(20,bannerMSG);
-                whichButtonPressed = 0;
-                if (bannerMSG == "pass" && mouseState.LeftButton == ButtonState.Pressed)
-                {
-                    whichButtonPressed = 1;
-                }
-                if (bannerMSG == "go" && mouseState.LeftButton == ButtonState.Pressed)
-                {
-                    whichButtonPressed = 2;
-                }
-            }
-            banner.tick();
-            display.tick();
+
             for (int i = packetBuffer.Count - 1; i >= 0; i--)
             {
                 if (packetEncodeDecode.tryDecodeObject(packetBuffer[i], out int playerID, out gameState obj, "state") && playerID == 0)
@@ -50,6 +63,8 @@ namespace client
                     packetBuffer.RemoveAt(i);
                 }
             }
+
+
         }
             
         private void initialise(initalisationPacket initalPacket)
@@ -62,7 +77,6 @@ namespace client
         public void draw(SpriteBatch spriteBatch, GraphicsDevice graphicsDevice)
         {
             //TODO: add draw code
-            spriteBatch.Draw(textures.get("table"), Vector2.Zero, lobby ? Color.Gray : Color.White);
 
             if (initalised)
             {
@@ -73,6 +87,7 @@ namespace client
             }
             else
             {
+                spriteBatch.Draw(textures.get("table"), Vector2.Zero, lobby ? Color.Gray : Color.White);
                 spriteBatch.DrawString(font, $"Players: {playerCount}", new Vector2(64, 64), Color.White);
             }
             banner.draw(spriteBatch, screenSize);
@@ -127,7 +142,9 @@ namespace client
         {
             ticks++;
             readMessages();
-            if(connected)
+
+
+            if (connected)
             {
                 checkConnections();
                 if(lobby)
@@ -158,8 +175,7 @@ namespace client
                     }
                     if(initalised)
                     {
-                        if(focus)
-                        tickGame();
+                        tickGame(focus);
                     }
                     else
                     {
@@ -179,7 +195,7 @@ namespace client
                 return;
             }
 
-            if(ticks % 10 == 0)
+            if (ticks % 10 == 0)
             {
                 connectToServer();
             }

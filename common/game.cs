@@ -27,7 +27,7 @@ namespace common
 
         MouseState mouseState;
         MouseState prevMouseState = Mouse.GetState();
-        Point screenSize;
+        public Point screenSize;
         public bool isPlaying = true;
         public List<card> table = new List<card>();
         public List<card> garbage = new List<card>();
@@ -71,6 +71,7 @@ namespace common
                 bannerMSG = "pass";
             }
 
+            /*
             for (int i = 0; i < cards.Count; i++)
             {
                 if(selectedCards.Contains(i))
@@ -129,7 +130,8 @@ namespace common
             else if(leftMouserising() && bannerMSG == "pass")
             {
                 return new move(id, new List<card>());
-            }
+            }*/
+
             return null;
         }
         const int cardSpacing = 14;
@@ -209,7 +211,14 @@ namespace common
         {
             cardID = (int)suit * 13 + value;
             rotation = 0;
-            location = new Point(150,24);
+            location = new Point(150, 24);
+        }
+
+        public card(int cardID)
+        {
+            this.cardID = cardID;
+            rotation = 0;
+            location = new Point(150, 24);
         }
 
         public cardTypes suit
