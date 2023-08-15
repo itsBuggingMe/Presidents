@@ -27,5 +27,25 @@ namespace common
             }
             return false;
         }
+
+        public static bool has4OfType(int cardValue, List<card> cards)
+        {
+            int count = 0;
+            foreach (card card in cards)
+            {
+                if (card.cardValue == cardValue)
+                {
+                    count++;
+                }
+            }
+            if (count == 4)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
     }
 }

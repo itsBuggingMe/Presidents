@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Net.Sockets;
 
@@ -17,7 +18,8 @@ namespace server
 
         int playerTurn = 0;
         int idOfLastGone;
-
+        byte alert = 0;
+        byte bombDecayTime = 0;
         public presidentsGame(int[] ID, string[] name)
         {
             idOfLastGone = ID[0];
@@ -63,6 +65,35 @@ namespace server
         Random random = new Random();
         public string update(List<string> packets, string finalPacket)
         {
+            foreach(card card in table)
+            {
+                if(func.has4OfType(card.cardValue, table) || card.cardValue == 0)
+                {
+                    if(bombDecayTime == 0)
+                    {
+                        bombDecayTime = 48*3;
+                    }
+                    else
+                    {
+                        bombDecayTime--;
+                        if (bombDecayTime == 0)
+                        {
+                            for(int i = table.Count - 1; i >= 0; i--)
+                            {
+                                if (table[i].cardValue == card.cardValue)
+                                {
+                                    garbagePile.Add(table[i]);
+                                    table.RemoveAt(i);
+                                }
+                            }
+                            alert = 2;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
             for (int i = packets.Count - 1; i >= 0;i--)
             {
                 if (packetEncodeDecode.tryDecodeObject(packets[i], out int id, out move move, "move"))
@@ -71,20 +102,25 @@ namespace server
 
                     if (Move(move, out bool bombUsed))
                     {
-                        if(move.cards.Count == 0)
+
+
+                        if(move.cards.Count != 0)
                         {
-                            if(players[playerTurn].id == idOfLastGone)
+                            idOfLastGone = players[playerTurn].id;
+                        }
+                        else
+                        {
+                            if (players[playerTurn].id == idOfLastGone)
                             {
                                 break;
                             }
-
-                            idOfLastGone = players[playerTurn].id;
                         }
 
                         if (players[playerTurn].cards.Count == 0)
                         {
                             placements.Add(players[playerTurn].id * (bombUsed ? -1 : 1));
                         }
+
                         nextTurn();
                         hasGameEnded();
 
@@ -93,6 +129,7 @@ namespace server
                 }
 
             }
+
             for (int i = packets.Count - 1; i >= 0; i--)
             {
                 if (packets[i].StartsWith("$S:"))
@@ -109,7 +146,8 @@ namespace server
                 idList[i] = players[i].id;
                 cardCount[i] = players[i].cards.Count();
             }
-            gameState gameState = new gameState(table.ToArray(), garbagePile.ToArray(), idList, cardCount, players[playerTurn].id);
+            gameState gameState = new gameState(table.ToArray(), garbagePile.ToArray(), idList, cardCount, players[playerTurn].id, alert);
+            alert = 0;
             return packetEncodeDecode.encodeObject(gameState, 0, "state");
         }
 
@@ -119,12 +157,14 @@ namespace server
             playerTurn = playerTurn % players.Count();
             if (!players[playerTurn].isPlaying)
             {
+                Debug.WriteLine("A");
                 nextTurn();
             }
 
             if(idOfLastGone == players[playerTurn].id)
             {
                 moveTableToGarbage();
+                alert = 1;
             }
         }
 
@@ -231,149 +271,8 @@ namespace server
             return tryGenMove(move, new List<card>());
         }
 
-        private static void shuffle<T>(List<T> list)
-        {
-            Random rng = new Random();
-            int n = list.Count;
 
-            while (n > 1)
-            {
-                n--;
-                int k = rng.Next(n + 1);
-                T value = list[k];
-                list[k] = list[n];
-                list[n] = value;
-            }
-        }
-
-
-        private bool tryGenMove(move move, List<card> bomb)
-        {
-            if (move.cards.Count > 3)
-            {
-                return false;
-            }
-
-            if (move.cards.Count != table.Count && table.Count != 0)
-            {
-
-                return false;
-            }
-
-            foreach (card card in table)
-            {
-                Debug.WriteLine(card.cardValue);
-            }
-
-            switch (move.cards.Count)
-            {
-                case 1:
-                    if (table.Count == 0 || move.cards[0].cardValue >= table[0].cardValue)
-                    {
-                        moveTableToGarbage();
-
-                        foreach (card card in bomb)
-                        {
-                            table.Add(card);
-                        }
-
-                        table.Add(move.cards[0]);
-
-                        players[playerTurn].cards.Remove(move.cards[0]);
-
-                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
-
-                        return true;
-                    }//single accepted
-                    else
-                    {
-                        return false;
-                    }//number not high enough
-                case 2:
-                    if (move.cards[0].cardValue == move.cards[1].cardValue && (table.Count == 0 || move.cards[0].cardValue >= table[0].cardValue))
-                    {
-                        moveTableToGarbage();
-
-                        foreach (card card in bomb)
-                        {
-                            table.Add(card);
-                        }
-
-                        table.Add(move.cards[0]);
-                        table.Add(move.cards[1]);
-
-
-                        players[playerTurn].cards.Remove(move.cards[0]);
-                        players[playerTurn].cards.Remove(move.cards[1]);
-
-                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
-
-                        return true;
-                    }
-                    else
-                    {
-                        return false;
-                    }//double does not match
-                case 3:
-                    if (threeOfaKind(move.cards[0].cardValue, move.cards[1].cardValue, move.cards[2].cardValue) && (table.Count == 0 || threeOfaKind(table[0].cardValue, table[1].cardValue, table[2].cardValue)))
-                    {//3 of a kind
-                        moveTableToGarbage();
-
-                        foreach (card card in bomb)
-                        {
-                            table.Add(card);
-                        }
-
-                        table.Add(move.cards[0]);
-                        table.Add(move.cards[1]);
-                        table.Add(move.cards[2]);
-                        players[playerTurn].cards.Remove(move.cards[0]);
-                        players[playerTurn].cards.Remove(move.cards[1]);
-                        players[playerTurn].cards.Remove(move.cards[2]);
-
-                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
-
-                        return true;
-                    }
-                    else if (threeOfaKind(move.cards[0].cardValue, move.cards[1].cardValue + 1, move.cards[2].cardValue + 2) && (table.Count == 0 || (threeOfaKind(table[0].cardValue, table[1].cardValue + 1, table[2].cardValue + 2) && move.cards[0].cardValue >= table[0].cardValue)))
-                    {//acendineg
-                        moveTableToGarbage();
-
-                        foreach (card card in bomb)
-                        {
-                            table.Add(card);
-                        }
-
-                        table.Add(move.cards[0]);
-                        table.Add(move.cards[1]);
-                        table.Add(move.cards[2]);
-                        players[playerTurn].cards.Remove(move.cards[0]);
-                        players[playerTurn].cards.Remove(move.cards[1]);
-                        players[playerTurn].cards.Remove(move.cards[2]);
-
-                        table.Sort((card1, card2) => card2.cardValue.CompareTo(card1.cardValue));
-
-                        return true;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                default:
-                    throw new Exception("Move has invalid card count");
-            }
-        }
-
-        private void moveTableToGarbage()
-        {
-            while(table.Count > 0)
-            {
-                garbagePile.Add(table[0]);
-                table.RemoveAt(0);
-            }
-        }
-
-        private bool hasFourBomb(move move, out move moveNoBomb, out List<card> bomb)
+        public bool hasFourBomb(move move, out move moveNoBomb, out List<card> bomb)
         {
             bomb = new List<card>();
 
@@ -424,6 +323,138 @@ namespace server
 
             return true;
         }
+
+        private static void shuffle<T>(List<T> list)
+        {
+            Random rng = new Random();
+            int n = list.Count;
+
+            while (n > 1)
+            {
+                n--;
+                int k = rng.Next(n + 1);
+                T value = list[k];
+                list[k] = list[n];
+                list[n] = value;
+            }
+        }
+
+
+        private bool tryGenMove(move move, List<card> bomb)
+        {
+            if (move.cards.Count > 3)
+            {
+                return false;
+            }
+
+            if (move.cards.Count != table.Count && table.Count != 0)
+            {
+
+                return false;
+            }
+
+            switch (move.cards.Count)
+            {
+                case 1:
+                    if (table.Count == 0 || move.cards[0].cardValue >= table[0].cardValue)
+                    {
+                        moveTableToGarbage();
+
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
+                        table.Add(move.cards[0]);
+
+                        players[playerTurn].cards.Remove(move.cards[0]);
+
+                        return true;
+                    }//single accepted
+                    else
+                    {
+                        return false;
+                    }//number not high enough
+                case 2:
+                    if (move.cards[0].cardValue == move.cards[1].cardValue && (table.Count == 0 || move.cards[0].cardValue >= table[0].cardValue))
+                    {
+                        moveTableToGarbage();
+
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
+                        table.Add(move.cards[0]);
+                        table.Add(move.cards[1]);
+
+
+                        players[playerTurn].cards.Remove(move.cards[0]);
+                        players[playerTurn].cards.Remove(move.cards[1]);
+
+
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }//double does not match
+                case 3:
+                    if (threeOfaKind(move.cards[0].cardValue, move.cards[1].cardValue, move.cards[2].cardValue) && (table.Count == 0 || threeOfaKind(table[0].cardValue, table[1].cardValue, table[2].cardValue)))
+                    {//3 of a kind
+                        moveTableToGarbage();
+
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
+                        table.Add(move.cards[0]);
+                        table.Add(move.cards[1]);
+                        table.Add(move.cards[2]);
+                        players[playerTurn].cards.Remove(move.cards[0]);
+                        players[playerTurn].cards.Remove(move.cards[1]);
+                        players[playerTurn].cards.Remove(move.cards[2]);
+
+
+                        return true;
+                    }
+                    else if (threeOfaKind(move.cards[0].cardValue, move.cards[1].cardValue + 1, move.cards[2].cardValue + 2) && (table.Count == 0 || (threeOfaKind(table[0].cardValue, table[1].cardValue + 1, table[2].cardValue + 2) && move.cards[0].cardValue >= table[0].cardValue)))
+                    {//acendineg
+                        moveTableToGarbage();
+
+                        foreach (card card in bomb)
+                        {
+                            table.Add(card);
+                        }
+
+                        table.Add(move.cards[0]);
+                        table.Add(move.cards[1]);
+                        table.Add(move.cards[2]);
+                        players[playerTurn].cards.Remove(move.cards[0]);
+                        players[playerTurn].cards.Remove(move.cards[1]);
+                        players[playerTurn].cards.Remove(move.cards[2]);
+
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                default:
+                    throw new Exception("Move has invalid card count");
+            }
+        }
+
+        private void moveTableToGarbage()
+        {
+            while(table.Count > 0)
+            {
+                garbagePile.Add(table[0]);
+                table.RemoveAt(0);
+            }
+        }
+
 
         private static bool threeOfaKind(int a, int b, int c)
         {

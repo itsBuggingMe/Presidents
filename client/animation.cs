@@ -33,6 +33,8 @@ namespace client
         int activePlayerID;
         MouseState preMouseState = Mouse.GetState();
         MouseState mouseState = Mouse.GetState();
+        public byte alert;
+
         public display(player parent, Textures textures)
         {
             this.parent = parent;
@@ -51,25 +53,40 @@ namespace client
             }
         }
 
+
         public move? tick(bool focus)
         {
-            move? output = null;
-
             preMouseState = mouseState;
             mouseState = Mouse.GetState();
-            Point mouseLoc = func.getMouseLoc(Mouse.GetState(), parent.screenSize).ToPoint();
-            
+            Point mouseLoc = func.getMouseLoc(mouseState, parent.screenSize).ToPoint();
+
             checkArrays();
 
-            if (risingEdgeRight() || activePlayerID != parent.currentPlayerID)
-            {//DESELECT
-                foreach (displayCard card in displayPlayer)
-                {
-                    card.selected = false;
-                }
-            }
 
+
+            finish();
+            setCardLocationsAndGenMoves(mouseLoc, focus, out move? output);
+            setIdealTableLocation();
+            tickAnimations();
+
+            activePlayerID = parent.currentPlayerID;
+            return output;
+        }
+
+        private bool risingEdgeLeft()
+        {
+            return mouseState.LeftButton == ButtonState.Pressed && preMouseState.LeftButton == ButtonState.Released;
+        }
+
+        private bool risingEdgeRight()
+        {
+            return mouseState.RightButton == ButtonState.Pressed && preMouseState.RightButton == ButtonState.Released;
+        }
+
+        private void setCardLocationsAndGenMoves(Point mouseLoc, bool focus, out move? output)
+        {
             int selectedIndex = -1;
+            output = null;
 
             for (int i = 0; i < parent.cards.Count; i++)
             {//ideal locations for player card
@@ -80,8 +97,8 @@ namespace client
                 int sideRight = wantXlocation - 7;
 
                 int wantYlocation = activePlayerID == parent.id ? 160 : 180;
-                
-                if(currentCard.selected)
+
+                if (currentCard.selected)
                 {
                     wantYlocation -= 28;
                 }
@@ -89,7 +106,7 @@ namespace client
                 if (mouseLoc.Y > wantYlocation - 80 && mouseLoc.X < sideLeft)
                 {
                     wantXlocation += 28;
-                    if(selectedIndex == -1 && i != 0)
+                    if (selectedIndex == -1 && i != 0)
                     {
                         selectedIndex = i - 1;
                     }
@@ -107,34 +124,31 @@ namespace client
                 }
             }
 
-            for(int i = 0; i < displayTable.Count(); i++)
-            {
-                displayCard currentCard = displayTable[i];
-                Point wantLoc = new Point(78 + i * 24, 67);
-
-                if (currentCard.location != wantLoc && !currentCard.animation.active)
-                {
-                    currentCard.animation = new Animation(10, 4, new Vector3(currentCard.location.X, currentCard.location.Y, 0), new Vector3(wantLoc.X, wantLoc.Y, 0));
-                }
-            }
-
             if (risingEdgeLeft() && selectedIndex != -1)
             {//SELECT
                 displayPlayer[selectedIndex].selected = true;
             }
 
+            if (risingEdgeRight() || activePlayerID != parent.currentPlayerID)
+            {//DESELECT
+                foreach (displayCard card in displayPlayer)
+                {
+                    card.selected = false;
+                }
+            }
+
             if (Keyboard.GetState().IsKeyDown(Keys.Space) && focus)
             {//GENERATEE MOVE
                 List<card> cards = new List<card>();
-                foreach(displayCard card in displayPlayer)
+                foreach (displayCard card in displayPlayer)
                 {
-                    if(card.selected)
+                    if (card.selected)
                     {
                         card.selected = false;
                         cards.Add(new card(card.cardID));
                     }
                 }
-                if(cards.Count > 0)
+                if (cards.Count > 0)
                     output = new move(parent.id, cards);
             }
 
@@ -144,6 +158,58 @@ namespace client
                 output = new move(parent.id, cards);
             }
 
+        }
+
+        public static bool has4OfType(int cardValue, List<displayCard> cards)
+        {
+            int count = 0;
+            foreach (displayCard card in cards)
+            {
+                if (card.cardValue == cardValue)
+                {
+                    count++;
+                }
+            }
+            if (count == 4)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        private void setIdealTableLocation()
+        {
+            for (int i = 0; i < displayTable.Count(); i++)
+            {
+                displayCard currentCard = displayTable[i];
+                Point wantLoc = new Point(78 + i * 24, 67);
+
+                if (currentCard.location != wantLoc && !currentCard.animation.active)
+                {
+                    currentCard.animation = new Animation(10, 4, new Vector3(currentCard.location.X, currentCard.location.Y, 0), new Vector3(wantLoc.X, wantLoc.Y, 0));
+                }
+            }
+        }
+
+        private void finish()
+        {
+            if (alert == 1)
+            {
+                foreach (displayCard card in displayGarbage)
+                {
+                    if (card.location != new Point(238, 66) && !card.animation.active)
+                    {
+                        card.animation = new Animation(48, 2, new Vector3(card.location.ToVector2(), 0), new Vector3(238, 66, 0));
+                    }
+                }
+            }
+        }
+
+        private void tickAnimations()
+        {
             for (int i = 0; i < displayPlayer.Count; i++)
             {
                 Vector3 location = displayPlayer[i].animation.tick();
@@ -162,24 +228,31 @@ namespace client
                 displayGarbage[i].location = new Vector2(location.X, location.Y).ToPoint();
                 displayGarbage[i].rotationX = location.Z;
             }
-            activePlayerID = parent.currentPlayerID;
-
-
-            return output;
         }
 
-        private bool risingEdgeLeft()
+        private bool tableHasBomb()
         {
-            return mouseState.LeftButton == ButtonState.Pressed && preMouseState.LeftButton == ButtonState.Released;
+            foreach(displayCard card in displayTable)
+            {
+                if(card.cardValue == 0)
+                {
+                    return true;
+                }
+            }
+            foreach (displayCard card in displayTable)
+            {
+                if(has4OfType(card.cardValue, displayTable))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
-        private bool risingEdgeRight()
+        private void checkArrays(out List<displayCard> tableAdditions, out List<displayCard> garbageAdditions)
         {
-            return mouseState.RightButton == ButtonState.Pressed && preMouseState.RightButton == ButtonState.Released;
-        }
-
-        private void checkArrays()
-        {
+            tableAdditions = new List<displayCard>();
+            garbageAdditions = new List<displayCard>();
             //player -> table
             List<byte> cardsToRemove = new List<byte>();
             foreach (displayCard dispCard in displayPlayer)
@@ -189,20 +262,6 @@ namespace client
                     cardsToRemove.Add((byte)dispCard.cardID);
                     dispCard.animation = new Animation(10, 1, new Vector3(dispCard.location.X, dispCard.location.Y, 0), new Vector3(78 + displayGarbage.Count * 24, 67, 0));
                     displayTable.Add(dispCard);
-                    if (dispCard.cardValue == 0)
-                    {
-                        explosionDecay = explosionTime;
-
-                        foreach (displayCard garbCard in displayGarbage)
-                        {
-                            if (!garbCard.animation.active)
-                            {
-                                Vector3 end = new Vector3(random.Next(23, 297), random.Next(23, 147), garbCard.rotationX + random.Next(720) - 360);
-                                garbCard.animation = new Animation(24, 3, new Vector3(garbCard.location.X, garbCard.location.Y, garbCard.rotationX), end);
-                                garbCard.animation.animation = new Animation(48, 2, end, new Vector3(238, 66, 0));
-                            }
-                        }
-                    }
                 }
             }
 

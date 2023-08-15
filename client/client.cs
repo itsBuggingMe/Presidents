@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Net.Mail;
 
 namespace client
 {
@@ -40,8 +41,21 @@ namespace client
                     }
                 }
             }*/
-
-
+            display.alert = 0;
+            for (int i = packetBuffer.Count - 1; i >= 0; i--)
+            {
+                if (packetEncodeDecode.tryDecodeObject(packetBuffer[i], out int playerID, out gameState obj, "state") && playerID == 0)
+                {
+                    thisPlayer.table = obj.table.ToList();
+                    thisPlayer.garbage = obj.garbage.ToList();
+                    thisPlayer.currentPlayerID = obj.currentPlayer;
+                    packetBuffer.RemoveAt(i);
+                    if(obj.alert != 0)
+                    {
+                        display.alert = obj.alert;
+                    }
+                }
+            }
 
             banner.tick();
 
@@ -52,19 +66,6 @@ namespace client
             {
                 sendMessage(packetEncodeDecode.encodeObject(move, id, "move"));
             }
-
-            for (int i = packetBuffer.Count - 1; i >= 0; i--)
-            {
-                if (packetEncodeDecode.tryDecodeObject(packetBuffer[i], out int playerID, out gameState obj, "state") && playerID == 0)
-                {
-                    thisPlayer.table = obj.table.ToList();
-                    thisPlayer.garbage = obj.garbage.ToList();
-                    thisPlayer.currentPlayerID = obj.currentPlayer;
-                    packetBuffer.RemoveAt(i);
-                }
-            }
-
-
         }
             
         private void initialise(initalisationPacket initalPacket)
