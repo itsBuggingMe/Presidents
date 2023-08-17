@@ -16,8 +16,8 @@ namespace common
         public int id;
         public string name;
         public List<card> cards;
-        Point[] cardLocations = new Point[52];
 
+        public int ServerCardCount;
         public int currentPlayerID = 0;
 
         public List<int> selectedCards = new List<int>();
@@ -55,7 +55,7 @@ namespace common
             prevMouseState = mouseState;
             mouseState = Mouse.GetState();
 
-            cardLocations = new Point[cards.Count];
+            //cardLocations = new Point[cards.Count];
 
             int mouseLocalX = (int)func.getMouseLoc(mouseState, screenSize).X;
             int cardLoc = 160 - (cards.Count * cardSpacing / 2) + 4;
@@ -144,7 +144,7 @@ namespace common
             Vector2 offset = new Vector2(0, (id == currentPlayerID ? 0 : 24));
             for (int i = 0; i < cards.Count; i++)
             {
-                drawCard(cards[i], cardLocations[i].ToVector2() + offset, spriteBatch, 0, 0, 0);
+                //drawCard(cards[i], cardLocations[i].ToVector2() + offset, spriteBatch, 0, 0, 0);
             }
 
             for(int i = 0; i < table.Count; i++)
@@ -210,15 +210,11 @@ namespace common
         public card(cardTypes suit, int value)
         {
             cardID = (int)suit * 13 + value;
-            rotation = 0;
-            location = new Point(150, 24);
         }
 
         public card(int cardID)
         {
             this.cardID = cardID;
-            rotation = 0;
-            location = new Point(150, 24);
         }
 
         public cardTypes suit
@@ -236,26 +232,6 @@ namespace common
                 return cardID % 13;
             }
         }
-
-        private Point location;
-        private float rotation;
-
-        public Point getLocation()
-        {
-            return location;
-        }
-        public void setLocation(Point point)
-        {
-            this.location = point;
-        }
-        public float getRotation()
-        {
-            return rotation;
-        }
-        public void setRotation(float rotation)
-        {
-            this.rotation = rotation;
-        }
     }
 
     public enum cardTypes
@@ -270,11 +246,13 @@ namespace common
     {
         public int ID;
         public List<card> cards;
+        public int cardsLeft;
 
-        public move(int id, List<card> cards)
+        public move(int id, List<card> cards, int cardsLeft)
         {
             this.ID = id;
             this.cards = cards;
+            this.cardsLeft = cardsLeft;
         }
     }
 }

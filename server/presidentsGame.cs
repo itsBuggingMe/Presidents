@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Formats.Asn1;
 using System.Net.Sockets;
 
 namespace server
@@ -20,6 +21,7 @@ namespace server
         int idOfLastGone;
         byte alert = 0;
         byte bombDecayTime = 0;
+        byte finishDecayTime = 0;
         public presidentsGame(int[] ID, string[] name)
         {
             idOfLastGone = ID[0];
@@ -48,13 +50,18 @@ namespace server
                 players[i % ID.Length].cards.Add(garbagePile[0]);
                 garbagePile.RemoveAt(0);
             }
+
+            foreach(player player in players)
+            {
+                player.ServerCardCount = player.cards.Count;
+            }
         }
         private bool hasGameEnded()
         {
             int activePlayers = 0;
             foreach(player player in players)
             {
-                if(player.cards.Count != 0)
+                if(player.ServerCardCount != 0)
                 {
                     activePlayers++;
                 }
@@ -62,23 +69,30 @@ namespace server
 
             return activePlayers <= 1;
         }
+
         Random random = new Random();
+
         public string update(List<string> packets, string finalPacket)
         {
-            foreach(card card in table)
+            if (hasGameEnded())
+            {
+                return "gameEnd";
+            }
+
+            foreach (card card in table)
             {
                 if(func.has4OfType(card.cardValue, table) || card.cardValue == 0)
                 {
                     if(bombDecayTime == 0)
                     {
-                        bombDecayTime = 48*3;
+                        bombDecayTime = 48*2;
                     }
                     else
                     {
                         bombDecayTime--;
                         if (bombDecayTime == 0)
                         {
-                            for(int i = table.Count - 1; i >= 0; i--)
+                            for (int i = table.Count - 1; i >= 0; i--)
                             {
                                 if (table[i].cardValue == card.cardValue)
                                 {
@@ -86,11 +100,20 @@ namespace server
                                     table.RemoveAt(i);
                                 }
                             }
-                            alert = 2;
                         }
                     }
 
                     break;
+                }
+            }
+
+            if (finishDecayTime != 0)
+            {
+                finishDecayTime--;
+                if (finishDecayTime == 0)
+                {
+                    moveTableToGarbage();
+                    alert = 30;
                 }
             }
 
@@ -102,9 +125,13 @@ namespace server
 
                     if (Move(move, out bool bombUsed))
                     {
+                        if(move.cardsLeft == 0)
+                        {
+                            players[playerTurn].isPlaying = false;
+                        }
+                        players[playerTurn].ServerCardCount = move.cardsLeft;
 
-
-                        if(move.cards.Count != 0)
+                        if (move.cards.Count != 0)
                         {
                             idOfLastGone = players[playerTurn].id;
                         }
@@ -122,7 +149,7 @@ namespace server
                         }
 
                         nextTurn();
-                        hasGameEnded();
+
 
                         break;
                     }
@@ -141,62 +168,111 @@ namespace server
             int[] idList = new int[players.Count()];
             int[] cardCount = new int[players.Count()];
 
+
             for (int i = 0; i < players.Count(); i++)
             {
                 idList[i] = players[i].id;
-                cardCount[i] = players[i].cards.Count();
+                cardCount[i] = players[i].ServerCardCount;
             }
-            gameState gameState = new gameState(table.ToArray(), garbagePile.ToArray(), idList, cardCount, players[playerTurn].id, alert);
-            alert = 0;
+
+            gameState gameState = new gameState(table.ToArray(), garbagePile.ToArray(), idList, cardCount, players[playerTurn].id, (byte)(alert != 0 ? 1 : 0));
+            
+            if (alert != 0)
+            {
+                alert--;
+            }
+
+
             return packetEncodeDecode.encodeObject(gameState, 0, "state");
         }
 
         public void nextTurn()
         {
-            playerTurn++;
-            playerTurn = playerTurn % players.Count();
-            if (!players[playerTurn].isPlaying)
+            if (isGameOver())
             {
-                Debug.WriteLine("A");
-                nextTurn();
+                for(int i = 0; i < placements.Count; i++)
+                {
+                    Debug.WriteLine(placements);
+                }
             }
 
-            if(idOfLastGone == players[playerTurn].id)
+            do
             {
-                moveTableToGarbage();
-                alert = 1;
-            }
+                playerTurn++;
+                playerTurn %= players.Length;
+                if (idOfLastGone == players[playerTurn].id)
+                {
+                    if (players[playerTurn].cards.Count != 0)
+                    {
+                        moveTableToGarbage();
+                        alert = 30;
+                    }
+                    else
+                    {
+                        idOfLastGone = players[(playerTurn + 1) % players.Length].id;
+                        nextTurn();
+                    }
+                }//finish tection
+            } while (!players[playerTurn].isPlaying);
         }
 
-        private void attemptFinish(move move)
+        private bool isGameOver()
         {
-            if (table.Count == 0)
-                return;
+            int i = 0;
+            foreach(player player in players)
+            {
+                if(player.isPlaying)
+                {
+                    i++;
+                }
+            }
+            return i == 1;
+        }
 
-            foreach (card card in move.cards)
+        private bool attemptFinish(move move)
+        {
+            if (table.Count == 0 || (table.Count + garbagePile.Count + move.cards.Count < 4) || move.cards.Count == 0)
+                return false;
+
+            List<card> finishCards = new List<card>();
+
+            finishCards.Add(move.cards[0]);
+
+            for(int i = 1; i < 4;i++)
             {
-                if (card.cardValue != move.cards[0].cardValue)
+                if (move.cards.Count > i)
                 {
-                    return;
+                    // Look to player cards
+                    finishCards.Add(move.cards[i]);
+                }
+                else if (table.Count > i - move.cards.Count)
+                {
+                    // Look to table
+                    finishCards.Add(table[i - move.cards.Count]);
+                }
+                else
+                {
+                    // Look to garbage pile
+                    garbagePile.Reverse();
+                    finishCards.Add(garbagePile[i - (move.cards.Count + table.Count)]);
+                    garbagePile.Reverse();
                 }
             }
-            foreach (card card in table)
+
+            int cardValue = finishCards[0].cardValue;
+
+            if (finishCards[1].cardValue == cardValue && finishCards[2].cardValue == cardValue && finishCards[3].cardValue == cardValue)
             {
-                if (card.cardValue != table[0].cardValue)
+                finishDecayTime = 30;
+                foreach(card card in move.cards)
                 {
-                    return;
+                    table.Add(card);
                 }
+                return true;
             }
-            if (table[0].cardValue != move.cards[0].cardValue)
-                return;
-            
-            if(move.cards.Count + table.Count == 4)
+            else
             {
-                moveTableToGarbage();
-                while (players[playerTurn].id != move.ID)
-                {
-                    nextTurn();
-                }
+                return false;
             }
         }
 
@@ -207,7 +283,23 @@ namespace server
 
             if (move.cards.Count < 4 && move.cards.Count > 0)
             {
-                //attemptFinish(move);
+                if(attemptFinish(move))
+                {
+
+                    players[playerTurn].ServerCardCount = move.cardsLeft;
+
+                    while (players[playerTurn].id != move.ID)
+                    {
+                        playerTurn++;
+                        playerTurn %= players.Length;
+                    }
+                    if(players[playerTurn].cards.Count == 0)
+                    {
+                        nextTurn();
+                    }
+                    this.alert = 30;
+                    return false;
+                }
             }
 
             if (move.ID != activePlayer.id)
@@ -286,7 +378,7 @@ namespace server
 
             foreach (card card in move.cards)
             {
-                bomb.Clear();
+                bomb = new List<card>();
                 foreach (card otherCard in move.cards)
                 {
                     if (card.cardValue == otherCard.cardValue)
@@ -312,7 +404,7 @@ namespace server
                 return false;
             }
 
-            moveNoBomb = new move(move.ID, new List<card>());
+            moveNoBomb = new move(move.ID, new List<card>(), move.cardsLeft);
             foreach (var card in move.cards)
             {
                 if (card.cardValue != cardType)
@@ -360,12 +452,12 @@ namespace server
                     {
                         moveTableToGarbage();
 
+                        table.Add(move.cards[0]);
+
                         foreach (card card in bomb)
                         {
                             table.Add(card);
                         }
-
-                        table.Add(move.cards[0]);
 
                         players[playerTurn].cards.Remove(move.cards[0]);
 
@@ -380,18 +472,16 @@ namespace server
                     {
                         moveTableToGarbage();
 
+                        table.Add(move.cards[0]);
+                        table.Add(move.cards[1]);
+
                         foreach (card card in bomb)
                         {
                             table.Add(card);
                         }
 
-                        table.Add(move.cards[0]);
-                        table.Add(move.cards[1]);
-
-
-                        players[playerTurn].cards.Remove(move.cards[0]);
+                        Debug.WriteLineIf(!players[playerTurn].cards.Remove(move.cards[0]), "aca");
                         players[playerTurn].cards.Remove(move.cards[1]);
-
 
                         return true;
                     }
@@ -404,18 +494,18 @@ namespace server
                     {//3 of a kind
                         moveTableToGarbage();
 
+                        table.Add(move.cards[0]);
+                        table.Add(move.cards[1]);
+                        table.Add(move.cards[2]);
+
                         foreach (card card in bomb)
                         {
                             table.Add(card);
                         }
 
-                        table.Add(move.cards[0]);
-                        table.Add(move.cards[1]);
-                        table.Add(move.cards[2]);
                         players[playerTurn].cards.Remove(move.cards[0]);
                         players[playerTurn].cards.Remove(move.cards[1]);
                         players[playerTurn].cards.Remove(move.cards[2]);
-
 
                         return true;
                     }
@@ -423,14 +513,15 @@ namespace server
                     {//acendineg
                         moveTableToGarbage();
 
+                        table.Add(move.cards[0]);
+                        table.Add(move.cards[1]);
+                        table.Add(move.cards[2]);
+
                         foreach (card card in bomb)
                         {
                             table.Add(card);
                         }
 
-                        table.Add(move.cards[0]);
-                        table.Add(move.cards[1]);
-                        table.Add(move.cards[2]);
                         players[playerTurn].cards.Remove(move.cards[0]);
                         players[playerTurn].cards.Remove(move.cards[1]);
                         players[playerTurn].cards.Remove(move.cards[2]);

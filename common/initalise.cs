@@ -10,12 +10,14 @@ namespace common
     {
         public card[] cards;
         public int[] id;
+        public int[] cc;
         public string[] name;
 
-        public initalisationPacket(card[] cards, int[] id, string[] name)
+        public initalisationPacket(card[] cards, int[] id, string[] name, int[] cardC)
         {
             this.cards = cards;
             this.id = id;
+            this.cc = cardC;
             this.name = name;
         }
     }

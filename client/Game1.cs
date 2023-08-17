@@ -36,9 +36,11 @@ namespace client
 
             _graphics.PreferredBackBufferHeight = fullScreenSize.Y;
             _graphics.PreferredBackBufferWidth = fullScreenSize.X;
+            //_graphics.PreferredBackBufferHeight = 180;
+            //_graphics.PreferredBackBufferWidth = 320;
             Window.Position = new Point(
-                (GraphicsDevice.DisplayMode.Width - fullScreenSize.X) / 2,
-                (GraphicsDevice.DisplayMode.Height - fullScreenSize.Y) / 2
+                (GraphicsDevice.DisplayMode.Width - fullScreenSize.X ) / 2,
+                (GraphicsDevice.DisplayMode.Height - fullScreenSize.Y ) / 2
                 );
             _graphics.ApplyChanges();
 
@@ -100,11 +102,9 @@ namespace client
             _spriteBatch.Begin(SpriteSortMode.Immediate, null, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise);
             _spriteBatch.Draw(
                 tableScreen,
-                new Rectangle(new Point(0, 0), (fullScreenSize.ToVector2()).ToPoint()),
+                new Rectangle(new Point(0, 0), fullScreenSize),//fullScreenSize
                 Color.White
             );
-            if(this.IsActive)
-            _spriteBatch.DrawString(_font, $"MSPT: {(DateTime.Now - lastDraw).TotalMilliseconds}", new Vector2(64,64), Color.White);
             _spriteBatch.End();
             lastDraw = DateTime.Now;
 

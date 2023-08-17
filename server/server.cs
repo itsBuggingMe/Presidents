@@ -10,6 +10,8 @@ using common;
 using System.Security.Cryptography;
 using System.Timers;
 using System.Diagnostics.Contracts;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.Xna.Framework.Input;
 
 namespace server
 {
@@ -41,7 +43,33 @@ namespace server
                     finalPacket = packets[packets.Count - 1];
                 }
                 string output = game.update(packets, finalPacket);
-                sendMessageAll(output);
+
+                if(purgatory > 0)
+                {
+                    purgatory--;
+                    sendMessageAll(packetEncodeDecode.encodeObject(purg, 0, "purg"));
+                }
+                else
+                {
+                    if (output == "gameEnd")
+                    {
+                        purgatory = 480;
+                        int[] ids = new int[game.players.Count()];
+
+                        for(int i = 0; i < game.placements.Count;i++)
+                        {
+                            if (game.placements[i] < 0)
+                            {
+                                game.placements.Add(-game.placements[i]);
+                                game.placements.RemoveAt(i);
+                            }
+                        }
+
+                        purg = new purg(ids);
+                        return;
+                    }
+                    sendMessageAll(output);
+                }
             }
         }
 
@@ -50,6 +78,7 @@ namespace server
             //TODO: write initalisation
             int[] id = new int[connectedPlayers.Count];
             string[] name = new string[connectedPlayers.Count];
+            int[] cardCounts = new int[connectedPlayers.Count];
 
             for(int i = 0; i < connectedPlayers.Count; i++)
             {
@@ -61,8 +90,13 @@ namespace server
 
             for (int i = 0; i < connectedPlayers.Count; i++)
             {
+                cardCounts[i] = game.players[i].cards.Count;
+            }
+
+            for (int i = 0; i < connectedPlayers.Count; i++)
+            {
                 card[] playerCards = game.players[i].cards.ToArray();
-                initalisationPacket initInfo = new initalisationPacket(playerCards, id, name);
+                initalisationPacket initInfo = new initalisationPacket(playerCards, id, name, cardCounts);
 
                 string packet = packetEncodeDecode.encodeStart(initInfo);
 
@@ -85,6 +119,8 @@ namespace server
         int playerThreshold = 3;
 
         bool lobby = true;
+        int purgatory = 0;
+        purg purg;
 
         public server(int port, string appName) 
         {
@@ -100,22 +136,6 @@ namespace server
             _console.add(30, ConsoleColor.Blue);//incoming
             _console.add(30, ConsoleColor.Green);//outgoing
         }
-
-        private void testMove(List<card> cards)
-        {
-            move testMove = new move(1 , cards);
-
-
-            foreach(card card in testMove.cards)
-            {
-                foreach(player pl in game.players)
-                {
-                    pl.cards.Add(card);
-                }
-            }
-
-        }
-
         public void start()
         {
             /*
@@ -158,10 +178,10 @@ namespace server
             //set my last tick time
             for(int i = packets.Count - 1; i >= 0; i--)
             {
-                if (packetEncodeDecode.tryDecodeID(packets[i], out int id))
+                if (packetEncodeDecode.tryDecodeID(packets[i], out int id, out string name))
                 {
                     int index = findIndexFromID(id);
-                    var tuple = (connectedPlayers[index].connection, connectedPlayers[index].playerIds, connectedPlayers[index].name, DateTime.Now);
+                    var tuple = (connectedPlayers[index].connection, connectedPlayers[index].playerIds, name, DateTime.Now);
                     connectedPlayers[index] = tuple;
                     packets.RemoveAt(i);
                 }
@@ -227,7 +247,7 @@ namespace server
                         var tupleConnection = (incomingMessage.SenderConnection, id, "", DateTime.Now);
                         connectedPlayers.Add(tupleConnection);
 
-                        sendMessage(packetEncodeDecode.encodeID(id), incomingMessage.SenderConnection);
+                        sendMessage(packetEncodeDecode.encodeID(id,""), incomingMessage.SenderConnection);
                     }
                     /*
                     else if(status == NetConnectionStatus.Connected)

@@ -19,7 +19,13 @@ namespace client
     {
         player parent;
 
+        //other players
+        public int[] id;
+        public string[] name;
+        public int[] cardCount;
+
         Textures textures;
+        SpriteFont font;
 
         List<displayCard> displayPlayer;
 
@@ -35,10 +41,17 @@ namespace client
         MouseState mouseState = Mouse.GetState();
         public byte alert;
 
-        public display(player parent, Textures textures)
-        {
-            this.parent = parent;
+        Point[] playerPositions = new Point[] { new Point(287,24), new Point(287,82), new Point(31,82), new Point(31,24), new Point(86,0), new Point(191,0)};
+        Point[] playerCardPositions = new Point[] { new Point(287+24,24), new Point(287+24,82), new Point(31-24,82), new Point(31-24,24), new Point(86,-32), new Point(191,-32)};
 
+        Point lastFramePlayerLocation;
+
+        public display(player parent, Textures textures, SpriteFont font, int[] id, string[] names)
+        {
+            this.name = names;
+            this.id = id;
+            this.parent = parent;
+            this.font = font;
             this.textures = textures;
 
             displayTable = new List<displayCard>();
@@ -48,23 +61,61 @@ namespace client
             int cardLoc = 160 - (parent.cards.Count * 14 / 2) + 4;
             for (int i = 0; i < parent.cards.Count; i++)
             {
-                displayPlayer.Add(new displayCard(parent.cards[i], new Animation(20, 0, new Vector3(150, 24, 0), new Vector3(cardLoc, 180, 0))));
+                displayPlayer.Add(new displayCard(parent.cards[i], new Animation(20, 0, new Vector3(150, -30, 0), new Vector3(cardLoc, 180, 0))));
+                displayPlayer[i].animation.delay = (byte)(i * 2);
                 cardLoc += 14;
             }
         }
 
-
+        int lastBombCardValue = 0;
         public move? tick(bool focus)
         {
             preMouseState = mouseState;
             mouseState = Mouse.GetState();
             Point mouseLoc = func.getMouseLoc(mouseState, parent.screenSize).ToPoint();
 
-            checkArrays();
+            checkArrays(out List<displayCard> tableAdditions, out List<displayCard> garbageAdditions);
+
+            foreach(displayCard card in tableAdditions)
+            {
+                if (card.cardValue == 0)
+                {
+                    explosionDecay = explosionTime;
+
+                    blowUpGarbage();
+                    break;
+                }
+            }
+
+            if(tableAdditions.Count > 4)
+            {
+                foreach(displayCard card in tableAdditions)
+                {
+                    if (has4OfType(card.cardValue, tableAdditions))
+                    {
+                        lastBombCardValue = card.cardValue;
+                        explosionDecay = explosionTime;
+
+                        blowUpGarbage();
+                        break;
+                    }
+                }
+            }
 
 
+            foreach(displayCard dispCard in tableAdditions)
+            {
+                dispCard.animation = new Animation(10, 1, new Vector3(dispCard.location.X, dispCard.location.Y, 0), new Vector3(78 + displayTable.Count * 24, 67, 0));
+            }
+            foreach (displayCard dispCard in garbageAdditions)
+            {
+                if(dispCard.cardValue == 0)
+                {
+                    dispCard.animation = new Animation(48, 2, new Vector3(dispCard.location.ToVector2(), 0), new Vector3(238, 66, 0));
+                }
+            }
 
-            finish();
+            clearGarbage();
             setCardLocationsAndGenMoves(mouseLoc, focus, out move? output);
             setIdealTableLocation();
             tickAnimations();
@@ -82,7 +133,18 @@ namespace client
         {
             return mouseState.RightButton == ButtonState.Pressed && preMouseState.RightButton == ButtonState.Released;
         }
-
+        private void blowUpGarbage()
+        {
+            foreach (displayCard dispCard in displayGarbage)
+            {
+                if (!dispCard.animation.active && dispCard.location != new Point(238, 66))
+                {
+                    Vector3 end = new Vector3(random.Next(23, 297), random.Next(23, 147), dispCard.rotationX + random.Next(720) - 360);
+                    dispCard.animation = new Animation(24, 3, new Vector3(dispCard.location.X, dispCard.location.Y, dispCard.rotationX), end);
+                    dispCard.animation.animation = new Animation(48, 2, end, new Vector3(238, 66, 0));
+                }
+            }
+        }
         private void setCardLocationsAndGenMoves(Point mouseLoc, bool focus, out move? output)
         {
             int selectedIndex = -1;
@@ -149,13 +211,13 @@ namespace client
                     }
                 }
                 if (cards.Count > 0)
-                    output = new move(parent.id, cards);
+                    output = new move(parent.id, cards, parent.cards.Count - cards.Count);
             }
 
             if (Keyboard.GetState().IsKeyDown(Keys.Enter) && focus)
             {//GENERATEE MOVE
                 List<card> cards = new List<card>();
-                output = new move(parent.id, cards);
+                output = new move(parent.id, cards, parent.cards.Count);
             }
 
         }
@@ -194,7 +256,7 @@ namespace client
             }
         }
 
-        private void finish()
+        private void clearGarbage()
         {
             if (alert == 1)
             {
@@ -255,15 +317,24 @@ namespace client
             garbageAdditions = new List<displayCard>();
             //player -> table
             List<byte> cardsToRemove = new List<byte>();
+            
             foreach (displayCard dispCard in displayPlayer)
             {
                 if (func.listContainsCard(parent.table, dispCard.cardID))
                 {
                     cardsToRemove.Add((byte)dispCard.cardID);
-                    dispCard.animation = new Animation(10, 1, new Vector3(dispCard.location.X, dispCard.location.Y, 0), new Vector3(78 + displayGarbage.Count * 24, 67, 0));
                     displayTable.Add(dispCard);
+                    tableAdditions.Add(dispCard);
                 }
             }
+
+
+            if (displayTable.Count > 0 && displayTable[displayTable.Count - 1].cardValue == 0)
+            {
+                displayTable.Insert(0, displayTable[displayTable.Count - 1]);
+                displayTable.RemoveAt(displayTable.Count - 1);
+            }
+            
 
             foreach (byte cardToRemove in cardsToRemove)
             {
@@ -295,6 +366,7 @@ namespace client
                 {
                     cardsToRemove.Add((byte)dispCard.cardID);
                     displayGarbage.Add(dispCard);
+                    garbageAdditions.Add(dispCard);
                 }
             }
 
@@ -324,21 +396,11 @@ namespace client
             {
                 if(!listContainsCard(displayTable, card.cardID))
                 {
-                    displayTable.Add(new displayCard(card, new Animation(10, 1, new Vector3(0, 0, 0), new Vector3(78, 67,0))));
-                    if(card.cardValue == 0)
-                    {
-                        explosionDecay = explosionTime;
-
-                        foreach (displayCard dispCard in displayGarbage)
-                        {
-                            if (!dispCard.animation.active)
-                            {
-                                Vector3 end = new Vector3(random.Next(23, 297), random.Next(23, 147), dispCard.rotationX + random.Next(720) - 360);
-                                dispCard.animation = new Animation(24, 3, new Vector3(dispCard.location.X, dispCard.location.Y, dispCard.rotationX), end);
-                                dispCard.animation.animation = new Animation(48, 2, end, new Vector3(238, 66, 0));
-                            }
-                        }
-                    }
+                    Vector2 playerlocation = lastFramePlayerLocation.ToVector2();
+                    displayCard tableAddition = new displayCard(card, new Animation());
+                    tableAddition.location = playerlocation.ToPoint();
+                    tableAdditions.Add(tableAddition);
+                    displayTable.Add(tableAddition);
                 }
             }
             
@@ -387,7 +449,64 @@ namespace client
                 displayTable[i].drawCard(spriteBatch, cardMap);
                 displayTable[i].location -= screenShake.ToPoint();
             }
+
+
+            //gui
+            int indexOfSelf = -1;
+            for (int i = 0; i < id.Length; i++)
+            {
+                if (id[i] == parent.id)
+                {
+                    indexOfSelf = i;
+                    break;
+                }
+            }
+            int placardsDrawn = 0;
+            for (int i = 0; i < id.Length; i++)
+            {
+                if (indexOfSelf == i)
+                {
+                    continue;
+                }//1>2
+                int localIndex = placardsDrawn + 2 - indexOfSelf;
+                drawPlacardAtIndex(i, (localIndex + 6 * 2) % 6, spriteBatch, activePlayerID == id[i]);
+                placardsDrawn++;
+            }
+            spriteBatch.DrawString(font, parent.name, new Vector2(1, 125), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
         }
+
+        private int idToLocation(int idOfActivePlayer)
+        {
+            int indexOfSelf = -1;
+            for (int i = 0; i < id.Length; i++)
+            {
+                if (id[i] == parent.id)
+                {
+                    indexOfSelf = i;
+                    break;
+                }
+            }
+            int placardsDrawn = 0;
+            for (int i = 0; i < id.Length; i++)
+            {
+                if (indexOfSelf == i)
+                {
+                    continue;
+                }//1>2
+
+                if (idOfActivePlayer == id[i])
+                {
+                    int localIndex = placardsDrawn + 2 - indexOfSelf;
+                    int localIndexClamped = (localIndex + 6 * 2) % 6;
+                    return localIndexClamped;
+                }
+
+                placardsDrawn++;
+            }
+            return -1;
+        }
+
+
 
         private displayCard getDisplayCard(List<displayCard> list, int cardID)
         {
@@ -413,6 +532,41 @@ namespace client
                 }
             }
             return false;
+        }
+
+        private void drawPlacardAtIndex(int indexList, int indexScreen, SpriteBatch spriteBatch, bool isTurn)
+        {
+
+            Texture2D cardMap = textures.get("cardmap");
+
+
+            if (id[indexList] == activePlayerID)
+            {
+                lastFramePlayerLocation = playerCardPositions[indexScreen];
+            }
+
+            if (indexScreen < 2)
+            {
+                spriteBatch.Draw(cardMap, new Rectangle(new Point(playerPositions[indexScreen].X + 1, playerPositions[indexScreen].Y + 42), new Point(42, 32)), new Rectangle(843, 66, 42, 32), (isTurn ? Color.White : Color.Gray), MathHelper.ToRadians(270), new Vector2(0, 0), SpriteEffects.None, 1);
+                int stringLength = (int)font.MeasureString(name[indexList]).X / 2;
+                spriteBatch.DrawString(font, name[indexList], new Vector2(playerPositions[indexScreen].X + 34 - stringLength, playerPositions[indexScreen].Y-8), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
+
+                spriteBatch.DrawString(font, cardCount[indexList].ToString(), new Vector2(playerPositions[indexScreen].X + 12, playerPositions[indexScreen].Y + 16), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
+            }
+            else if (indexScreen < 4)
+            {
+                spriteBatch.Draw(cardMap, new Rectangle(playerPositions[indexScreen], new Point(42, 32)), new Rectangle(843, 66, 42, 32), (isTurn ? Color.White : Color.Gray), MathHelper.ToRadians(90), new Vector2(0, 0), SpriteEffects.None, 1);
+                spriteBatch.DrawString(font, name[indexList], new Vector2(playerPositions[indexScreen].X-30, playerPositions[indexScreen].Y-8), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
+
+                spriteBatch.DrawString(font, cardCount[indexList].ToString(), new Vector2(playerPositions[indexScreen].X - 24, playerPositions[indexScreen].Y+16), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
+            }
+            else
+            {
+                spriteBatch.Draw(cardMap, new Rectangle(new Point(playerPositions[indexScreen].X, playerPositions[indexScreen].Y), new Point(42, 32)), new Rectangle(843, 66, 42, 32), (isTurn ? Color.White : Color.Gray), MathHelper.ToRadians(0), new Vector2(0, 0), SpriteEffects.FlipVertically, 1);
+                spriteBatch.DrawString(font, name[indexList], new Vector2(playerPositions[indexScreen].X + 2, playerPositions[indexScreen].Y +1), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
+
+                spriteBatch.DrawString(font, cardCount[indexList].ToString(), new Vector2(playerPositions[indexScreen].X + 16, playerPositions[indexScreen].Y + 12), Color.Black, 0, Vector2.Zero, 0.5f, SpriteEffects.None, 1);
+            }
         }
     }
 
@@ -490,6 +644,31 @@ namespace client
 
             spriteBatch.Draw(cardMap, new Rectangle(location.X, location.Y, (int)(64 * distanceFrom90Y), (int)(64 * distanceFrom90Z)), sourceRectangle, color, MathHelper.ToRadians(rotationX), new Vector2(sourceRectangle.Width / 2f, sourceRectangle.Height / 2f), SpriteEffects.None, 1);
         }
+
+        public void drawCard(SpriteBatch spriteBatch, Texture2D cardMap, Color color)
+        {
+            rotationX %= 360;
+            rotationY %= 360;
+            rotationZ %= 360;
+
+            if (rotationY > 180)
+            {
+                rotationY = 180 - (rotationY - 180);
+            }
+            if (rotationZ > 180)
+            {
+                rotationZ = 180 - (rotationZ - 180);
+            }
+
+            float distanceFrom90Y = Math.Abs(rotationY - 90) / 90;
+            float distanceFrom90Z = Math.Abs(rotationZ - 90) / 90;
+
+            Rectangle sourceRectangle = rotationY > 90 || rotationZ > 90 ? new Rectangle(832, 64, 64, 64) : new Rectangle(this.cardValue * 64, (int)this.suit * 64, 64, 64);
+
+
+            spriteBatch.Draw(cardMap, new Rectangle(location.X, location.Y, (int)(64 * distanceFrom90Y), (int)(64 * distanceFrom90Z)), sourceRectangle, color, MathHelper.ToRadians(rotationX), new Vector2(sourceRectangle.Width / 2f, sourceRectangle.Height / 2f), SpriteEffects.None, 1);
+        }
+
     }
 
 
@@ -504,7 +683,7 @@ namespace client
 
         byte type;
         public bool active;
-        public byte delay = 0;
+        public int delay = 0;
 
         public Animation()
         {

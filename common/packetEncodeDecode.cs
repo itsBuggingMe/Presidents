@@ -12,9 +12,9 @@ namespace common
 {
     public static class packetEncodeDecode
     {
-        public static string encodeID(int id)
+        public static string encodeID(int id, string name)
         {
-            return "$I:" + id.ToString();
+            return $"$I:{id}:{name}";
         }
         public static string encodeUpdate(int playerCount, bool lobby)
         {
@@ -25,16 +25,23 @@ namespace common
             return "$S:" + JsonConvert.SerializeObject(info);
         }
 
-        public static bool tryDecodeID(string encodedID, out int id)
+        public static bool tryDecodeID(string encodedID, out int id, out string name)
         {
             if (encodedID.StartsWith("$I:"))
             {
-                return int.TryParse(encodedID.Substring(3), out id);
+                string[] parts = encodedID.Substring(3).Split(':');
+                if (parts.Length == 2 && int.TryParse(parts[0], out id))
+                {
+                    name = parts[1];
+                    return true;
+                }
             }
 
             id = 0;
+            name = null;
             return false;
         }
+
         public static bool tryDecodeUpdate(string encodedUpdate, out int playerCount, out bool lobby)
         {
             if (encodedUpdate.StartsWith("$U:"))
